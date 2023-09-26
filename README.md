@@ -19,6 +19,6 @@ It checks following features:
 10. more than 48 VCPU of CPU
 11. Asynchronous mirroring
 
-**Note: Online index rebuild feature is commonly used Enterprise level feature, Please check your index jobs if you are using rebuild online index or not.
+**Note: In order to find Online index rebuild feature, you have to run the script during maintenance window during weekend or for minimum of a week on 5 min schedule basis so that you can capture all the occurance of it. This script is very light weight.
 
 Please note that it is the customers responsibility to make sure you are not using any enterprise features or not.
