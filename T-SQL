@@ -12,80 +12,73 @@ GRANT CONNECT ANY DATABASE TO [prometheus]
 GO
 */
 
-    IF OBJECT_ID('tempdb.dbo.#FinalResultFeatureCheck') IS NOT NULL
-    DROP TABLE #FinalResultFeatureCheck
-    
-    CREATE TABLE #FinalResultFeatureCheck
-    (
-    IsFeatureEnabled bit,
-    Feature_Name Varchar(100)
-    )
-    
-    IF OBJECT_ID('tempdb.dbo.#EnterpriseFeaturesDB') IS NOT NULL
-    DROP TABLE #EnterpriseFeaturesDB
-    
-    CREATE TABLE #EnterpriseFeaturesDB
-    (
-    DatabaseName Varchar(100),
-    Feature_Name Varchar(100)
-    )
-    EXEC sp_msforeachdb
-    N' USE [?]
-    IF (SELECT COUNT(*) FROM sys.dm_db_persisted_sku_features) >0
-    BEGIN
-    INSERT INTO #EnterpriseFeaturesDB
-    SELECT DatabaseName=DB_NAME(),Feature_Name
-    FROM sys.dm_db_persisted_sku_features
-    END '
-    
-    
-    Insert INTO #FinalResultFeatureCheck
-            SELECT IIF(count(1)>0,1,0),'User Databases are using Enterprise Level Features'
-            FROM #EnterpriseFeaturesDB
-            Union
-            SELECT IIF(count(1)>0,1,0), 'You have Availability Groups with > 1 database' AS Enterprise_Feature
-            FROM sys.availability_databases_cluster Databaselist
-            INNER JOIN sys.availability_groups_cluster Groups ON Databaselist.group_id = Groups.group_id
-            GROUP BY [name] HAVING COUNT([database_name]) >1
-            UNION
-            SELECT IIF(count(1)>0,1,0), 'You have read-only Replicas' AS Enterprise_Feature
-            from sys.availability_replicas
-            WHERE secondary_role_allow_connections <> 0
-            UNION
-            SELECT IIF(count(1)>0,1,0), 'You have Asynchronous commit Replicas'
-            FROM sys.availability_replicas
-            WHERE availability_mode=0
-            UNION
-            SELECT IIF(count(1)>0,1,0), 'You are using Resource Governor'
-            FROM sys.dm_resource_governor_resource_pools
-            WHERE name NOT IN ('internal','default')
-            UNION
-            SELECT IIF(count(1)>0,1,0), 'You are using peer-to-peer replication'
-            FROM sys.dm_repl_articles
-            WHERE intPublicationOptions = 0x1
-            UNION
-            SELECT IIF(count(1)>0,1,0), 'You are using R or Python extensions'
-            FROM sys.dm_external_script_requests
-            WHERE language IN ('R','Python')
-            UNION
-            SELECT IIF(count(1)>0,1,0), 'Tempdb metadata memory-optimized is enabled'
-            FROM sys.configurations
-            WHERE name = N'tempdb metadata memory-optimized'
-            AND value_in_use = 1
-            UNION
-            SELECT IIF(count(1)>48,1,0),'SQL Server has > 48 vCPU'
-            FROM sys.dm_os_schedulers WITH (NOLOCK)
-            WHERE scheduler_id < 255 and [status] = 'VISIBLE ONLINE'
-            UNION
-            SELECT IIF(count(1)>0,1,0), 'SQL Server has > 128 GB Memory'
-            FROM sys.dm_os_sys_memory
-            WHERE total_physical_memory_kb/1024/1024 > 128
-            UNION
-            SELECT IIF(count(1)>0,1,0), 'You are using asynchronous mirroring'
-            from sys.database_mirroring
-            WHERE mirroring_safety_level = 1
-    
-    IF EXISTS (Select 1 from #FinalResultFeatureCheck where IsFeatureEnabled !=0)
-    Select 1
-    ELSE
-    Select 0
+IF(SELECT CASE WHEN CONVERT(sysname, SERVERPROPERTY('EDITION')) like 'Enterprise%' THEN 1 ELSE 0 END )=1
+BEGIN
+    -- SQL Server is Enterprise Edition
+IF OBJECT_ID('tempdb.dbo.#EnterpriseFeaturesDB') IS NOT NULL
+DROP TABLE #EnterpriseFeaturesDB
+
+CREATE TABLE #EnterpriseFeaturesDB
+(
+DatabaseName Varchar(100),
+Feature_Name Varchar(100)
+)
+EXEC sp_msforeachdb
+N' USE [?]
+IF (SELECT COUNT(*) FROM sys.dm_db_persisted_sku_features) >0
+BEGIN
+INSERT INTO #EnterpriseFeaturesDB
+SELECT DatabaseName=DB_NAME(),Feature_Name
+FROM sys.dm_db_persisted_sku_features
+END '
+SELECT IIF(count(1)>0,1,0),'User Databases are using Enterprise Level Features'
+FROM #EnterpriseFeaturesDB
+Union
+SELECT IIF(count(1)>0,1,0), 'You have Availability Groups with > 1 database' AS Enterprise_Feature
+FROM sys.availability_databases_cluster Databaselist
+INNER JOIN sys.availability_groups_cluster Groups ON Databaselist.group_id = Groups.group_id
+GROUP BY [name] HAVING COUNT([database_name]) >1
+UNION
+SELECT IIF(count(1)>0,1,0), 'You have read-only Replicas' AS Enterprise_Feature
+from sys.availability_replicas
+WHERE secondary_role_allow_connections <> 0
+UNION
+SELECT IIF(count(1)>0,1,0), 'You have Asynchronous commit Replicas'
+FROM sys.availability_replicas
+WHERE availability_mode=0
+UNION
+SELECT IIF(count(1)>0,1,0), 'You are using Resource Governor'
+FROM sys.dm_resource_governor_resource_pools
+WHERE name NOT IN ('internal','default')
+UNION
+SELECT IIF(count(1)>0,1,0), 'You are using peer-to-peer replication'
+FROM sys.dm_repl_articles
+WHERE intPublicationOptions = 0x1
+UNION
+SELECT IIF(count(1)>0,1,0), 'You are using R or Python extensions'
+FROM sys.dm_external_script_requests
+WHERE language IN ('R','Python')
+UNION
+SELECT IIF(count(1)>0,1,0), 'Tempdb metadata memory-optimized is enabled'
+FROM sys.configurations
+WHERE name = N'tempdb metadata memory-optimized'
+AND value_in_use = 1
+UNION
+SELECT IIF(count(1)>48,1,0),'SQL Server has > 48 vCPU'
+FROM sys.dm_os_schedulers WITH (NOLOCK)
+WHERE scheduler_id < 255 and [status] = 'VISIBLE ONLINE'
+UNION
+SELECT IIF(count(1)>0,1,0), 'SQL Server has > 128 GB Memory'
+FROM sys.dm_os_sys_memory
+WHERE total_physical_memory_kb/1024/1024 > 128
+UNION
+SELECT IIF(count(1)>0,1,0), 'You are using asynchronous mirroring'
+from sys.database_mirroring
+WHERE mirroring_safety_level = 1
+
+END
+ELSE
+BEGIN
+    -- SQL Server is not Enterprise Edition
+    PRINT 'SQL Server is not running Enterprise Edition.'
+END
